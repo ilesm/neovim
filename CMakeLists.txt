@@ -12,7 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # If the C compiler is some GNU-alike, use the gnu99 standard and enable all warnings.
 if(CMAKE_COMPILER_IS_GNUCC)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -std=gnu99")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -Wextra -pedantic -Wno-unused-parameter -std=gnu99")
+elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wall -Wextra -pedantic -Wno-unused-parameter -std=gnu99")
 endif(CMAKE_COMPILER_IS_GNUCC)
 
 add_definitions(-DHAVE_CONFIG_H)
@@ -44,7 +46,9 @@ endif(NOT CMAKE_USE_PTHREADS_INIT)
 check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
 
 find_package(LibIntl)
-include_directories(${LibIntl_INCLUDE_DIR})
+if(LibIntl_FOUND)
+  include_directories(${LibIntl_INCLUDE_DIR})
+endif()
 
 # Require libuv
 find_package(LibUV REQUIRED)

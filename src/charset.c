@@ -14,18 +14,19 @@
 #include "memline.h"
 #include "misc1.h"
 #include "misc2.h"
+#include "garray.h"
 #include "move.h"
 #include "os_unix.h"
 
-static int win_chartabsize __ARGS((win_T *wp, char_u *p, colnr_T col));
+static int win_chartabsize(win_T *wp, char_u *p, colnr_T col);
 
 # if defined(HAVE_WCHAR_H)
 #  include <wchar.h>        /* for towupper() and towlower() */
 # endif
-static int win_nolbr_chartabsize __ARGS((win_T *wp, char_u *s, colnr_T col,
-                                         int *headp));
+static int win_nolbr_chartabsize(win_T *wp, char_u *s, colnr_T col,
+                                 int *headp);
 
-static unsigned nr2hex __ARGS((unsigned c));
+static unsigned nr2hex(unsigned c);
 
 static int chartab_initialized = FALSE;
 
@@ -599,6 +600,8 @@ int ptr2cells(char_u *p)
 /*
  * Return the number of character cells string "s" will take on the screen,
  * counting TABs as two characters: "^I".
+ *
+ * 's' must be non-null.
  */
 int vim_strsize(char_u *s)
 {
@@ -608,9 +611,12 @@ int vim_strsize(char_u *s)
 /*
  * Return the number of character cells string "s[len]" will take on the
  * screen, counting TABs as two characters: "^I".
+ *
+ * 's' must be non-null.
  */
 int vim_strnsize(char_u *s, int len)
 {
+  assert(s);
   int size = 0;
 
   while (*s != NUL && --len >= 0) {

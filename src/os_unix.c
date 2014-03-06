@@ -41,6 +41,7 @@
 #include "message.h"
 #include "misc1.h"
 #include "misc2.h"
+#include "garray.h"
 #include "screen.h"
 #include "syntax.h"
 #include "term.h"
@@ -61,7 +62,7 @@ static int selinux_enabled = -1;
 
 
 #if defined(HAVE_SELECT)
-extern int select __ARGS((int, fd_set *, fd_set *, fd_set *, struct timeval *));
+extern int select(int, fd_set *, fd_set *, fd_set *, struct timeval *);
 #endif
 
 
@@ -86,49 +87,49 @@ extern int select __ARGS((int, fd_set *, fd_set *, fd_set *, struct timeval *));
 #endif
 
 
-static int get_x11_title __ARGS((int));
-static int get_x11_icon __ARGS((int));
+static int get_x11_title(int);
+static int get_x11_icon(int);
 
 static char_u   *oldtitle = NULL;
 static int did_set_title = FALSE;
 static char_u   *oldicon = NULL;
 static int did_set_icon = FALSE;
 
-static void may_core_dump __ARGS((void));
+static void may_core_dump(void);
 
 #ifdef HAVE_UNION_WAIT
 typedef union wait waitstatus;
 #else
 typedef int waitstatus;
 #endif
-static pid_t wait4pid __ARGS((pid_t, waitstatus *));
+static pid_t wait4pid(pid_t, waitstatus *);
 
-static int WaitForChar __ARGS((long));
-static int RealWaitForChar __ARGS((int, long, int *));
+static int WaitForChar(long);
+static int RealWaitForChar(int, long, int *);
 
 
-static void handle_resize __ARGS((void));
+static void handle_resize(void);
 
 #if defined(SIGWINCH)
-static RETSIGTYPE sig_winch __ARGS(SIGPROTOARG);
+static RETSIGTYPE sig_winch SIGPROTOARG;
 #endif
 #if defined(SIGINT)
-static RETSIGTYPE catch_sigint __ARGS(SIGPROTOARG);
+static RETSIGTYPE catch_sigint SIGPROTOARG;
 #endif
 #if defined(SIGPWR)
-static RETSIGTYPE catch_sigpwr __ARGS(SIGPROTOARG);
+static RETSIGTYPE catch_sigpwr SIGPROTOARG;
 #endif
-static RETSIGTYPE deathtrap __ARGS(SIGPROTOARG);
+static RETSIGTYPE deathtrap SIGPROTOARG;
 
-static void catch_int_signal __ARGS((void));
-static void set_signals __ARGS((void));
-static void catch_signals __ARGS(
-    (RETSIGTYPE (*func_deadly)(), RETSIGTYPE (*func_other)()));
-static int have_wildcard __ARGS((int, char_u **));
-static int have_dollars __ARGS((int, char_u **));
+static void catch_int_signal(void);
+static void set_signals(void);
+static void catch_signals
+    (RETSIGTYPE (*func_deadly)(), RETSIGTYPE (*func_other)());
+static int have_wildcard(int, char_u **);
+static int have_dollars(int, char_u **);
 
-static int save_patterns __ARGS((int num_pat, char_u **pat, int *num_file,
-                                 char_u ***file));
+static int save_patterns(int num_pat, char_u **pat, int *num_file,
+                         char_u ***file);
 
 #ifndef SIG_ERR
 # define SIG_ERR        ((RETSIGTYPE (*)())-1)
@@ -396,105 +397,6 @@ void mch_delay(long msec, int ignoreinput)
     WaitForChar(msec);
 }
 
-#if defined(HAVE_STACK_LIMIT) \
-  || (!defined(HAVE_SIGALTSTACK) && defined(HAVE_SIGSTACK))
-# define HAVE_CHECK_STACK_GROWTH
-/*
- * Support for checking for an almost-out-of-stack-space situation.
- */
-
-/*
- * Return a pointer to an item on the stack.  Used to find out if the stack
- * grows up or down.
- */
-static void check_stack_growth __ARGS((char *p));
-static int stack_grows_downwards;
-
-/*
- * Find out if the stack grows upwards or downwards.
- * "p" points to a variable on the stack of the caller.
- */
-static void check_stack_growth(char *p)
-{
-  int i;
-
-  stack_grows_downwards = (p > (char *)&i);
-}
-#endif
-
-#if defined(HAVE_STACK_LIMIT) || defined(PROTO)
-static char *stack_limit = NULL;
-
-#if defined(_THREAD_SAFE) && defined(HAVE_PTHREAD_NP_H)
-# include <pthread.h>
-# include <pthread_np.h>
-#endif
-
-/*
- * Find out until how var the stack can grow without getting into trouble.
- * Called when starting up and when switching to the signal stack in
- * deathtrap().
- */
-static void get_stack_limit()                 {
-  struct rlimit rlp;
-  int i;
-  long lim;
-
-  /* Set the stack limit to 15/16 of the allowable size.  Skip this when the
-   * limit doesn't fit in a long (rlim_cur might be "long long"). */
-  if (getrlimit(RLIMIT_STACK, &rlp) == 0
-      && rlp.rlim_cur < ((rlim_t)1 << (sizeof(long_u) * 8 - 1))
-#  ifdef RLIM_INFINITY
-      && rlp.rlim_cur != RLIM_INFINITY
-#  endif
-      ) {
-    lim = (long)rlp.rlim_cur;
-#if defined(_THREAD_SAFE) && defined(HAVE_PTHREAD_NP_H)
-    {
-      pthread_attr_t attr;
-      size_t size;
-
-      /* On FreeBSD the initial thread always has a fixed stack size, no
-       * matter what the limits are set to.  Normally it's 1 Mbyte. */
-      pthread_attr_init(&attr);
-      if (pthread_attr_get_np(pthread_self(), &attr) == 0) {
-        pthread_attr_getstacksize(&attr, &size);
-        if (lim > (long)size)
-          lim = (long)size;
-      }
-      pthread_attr_destroy(&attr);
-    }
-#endif
-    if (stack_grows_downwards) {
-      stack_limit = (char *)((long)&i - (lim / 16L * 15L));
-      if (stack_limit >= (char *)&i)
-        /* overflow, set to 1/16 of current stack position */
-        stack_limit = (char *)((long)&i / 16L);
-    } else   {
-      stack_limit = (char *)((long)&i + (lim / 16L * 15L));
-      if (stack_limit <= (char *)&i)
-        stack_limit = NULL;             /* overflow */
-    }
-  }
-}
-
-/*
- * Return FAIL when running out of stack space.
- * "p" must point to any variable local to the caller that's on the stack.
- */
-int mch_stackcheck(char *p)
-{
-  if (stack_limit != NULL) {
-    if (stack_grows_downwards) {
-      if (p < stack_limit)
-        return FAIL;
-    } else if (p > stack_limit)
-      return FAIL;
-  }
-  return OK;
-}
-#endif
-
 #if defined(HAVE_SIGALTSTACK) || defined(HAVE_SIGSTACK)
 /*
  * Support for using the signal stack.
@@ -514,7 +416,7 @@ static stack_t sigstk;                  /* for sigaltstack() */
 static struct sigstack sigstk;          /* for sigstack() */
 # endif
 
-static void init_signal_stack __ARGS((void));
+static void init_signal_stack(void);
 static char *signal_stack;
 
 static void init_signal_stack()                 {
@@ -696,13 +598,6 @@ deathtrap SIGDEFARG(sigarg) {
   /* Set the v:dying variable. */
   set_vim_var_nr(VV_DYING, (long)entered);
 
-#ifdef HAVE_STACK_LIMIT
-  /* Since we are now using the signal stack, need to reset the stack
-   * limit.  Otherwise using a regexp will fail. */
-  get_stack_limit();
-#endif
-
-
 #ifdef SIGHASARG
   /* try to find the name of this signal */
   for (i = 0; signal_info[i].sig != -1; i++)
@@ -764,7 +659,7 @@ deathtrap SIGDEFARG(sigarg) {
  * volatile because it is used in signal handler sigcont_handler().
  */
 static volatile int sigcont_received;
-static RETSIGTYPE sigcont_handler __ARGS(SIGPROTOARG);
+static RETSIGTYPE sigcont_handler SIGPROTOARG;
 
 /*
  * signal handler for SIGCONT
@@ -1424,32 +1319,12 @@ void mch_hide(char_u *name)
   /* can't hide a file */
 }
 
-/*
- * return TRUE if "name" is a directory
- * return FALSE if "name" is not a directory
- * return FALSE for error
- */
-int mch_isdir(char_u *name)
-{
-  struct stat statb;
-
-  if (*name == NUL)         /* Some stat()s don't flag "" as an error. */
-    return FALSE;
-  if (stat((char *)name, &statb))
-    return FALSE;
-#ifdef _POSIX_SOURCE
-  return S_ISDIR(statb.st_mode) ? TRUE : FALSE;
-#else
-  return (statb.st_mode & S_IFMT) == S_IFDIR ? TRUE : FALSE;
-#endif
-}
-
-static int executable_file __ARGS((char_u *name));
+int executable_file(char_u *name);
 
 /*
  * Return 1 if "name" is an executable file, 0 if not or it doesn't exist.
  */
-static int executable_file(char_u *name)
+int executable_file(char_u *name)
 {
   struct stat st;
 
@@ -1469,7 +1344,7 @@ int mch_can_exe(char_u *name)
   int retval;
 
   /* If it's an absolute or relative path don't need to use $PATH. */
-  if (mch_isFullName(name) || (name[0] == '.' && (name[1] == '/'
+  if (mch_is_full_name(name) || (name[0] == '.' && (name[1] == '/'
                                                   || (name[1] == '.' &&
                                                       name[2] == '/'))))
     return executable_file(name);
@@ -1530,17 +1405,6 @@ int mch_nodetype(char_u *name)
 }
 
 void mch_early_init()          {
-#ifdef HAVE_CHECK_STACK_GROWTH
-  int i;
-
-  check_stack_growth((char *)&i);
-
-# ifdef HAVE_STACK_LIMIT
-  get_stack_limit();
-# endif
-
-#endif
-
   /*
    * Setup an alternative stack for signals.  Helps to catch signals when
    * running out of stack space.
@@ -1565,7 +1429,7 @@ void mch_free_mem()          {
 
 #endif
 
-static void exit_scroll __ARGS((void));
+static void exit_scroll(void);
 
 /*
  * Output a newline when exiting.
@@ -2062,49 +1926,6 @@ char_u      *cmd;
 int options;                    /* SHELL_*, see vim.h */
 {
   int tmode = cur_tmode;
-#ifdef USE_SYSTEM       /* use system() to start the shell: simple but slow */
-  int x;
-  char_u  *newcmd;     /* only needed for unix */
-
-  out_flush();
-
-  if (options & SHELL_COOKED)
-    settmode(TMODE_COOK);           /* set to normal mode */
-
-
-  if (cmd == NULL)
-    x = system((char *)p_sh);
-  else {
-    newcmd = lalloc(STRLEN(p_sh)
-        + (extra_shell_arg == NULL ? 0 : STRLEN(extra_shell_arg))
-        + STRLEN(p_shcf) + STRLEN(cmd) + 4, TRUE);
-    if (newcmd == NULL)
-      x = 0;
-    else {
-      sprintf((char *)newcmd, "%s %s %s %s", p_sh,
-          extra_shell_arg == NULL ? "" : (char *)extra_shell_arg,
-          (char *)p_shcf,
-          (char *)cmd);
-      x = system((char *)newcmd);
-      vim_free(newcmd);
-    }
-  }
-  if (emsg_silent)
-    ;
-  else if (x == 127)
-    MSG_PUTS(_("\nCannot execute shell sh\n"));
-  else if (x && !(options & SHELL_SILENT)) {
-    MSG_PUTS(_("\nshell returned "));
-    msg_outnum((long)x);
-    msg_putchar('\n');
-  }
-
-  if (tmode == TMODE_RAW)
-    settmode(TMODE_RAW);        /* set to raw mode */
-  resettitle();
-  return x;
-
-#else /* USE_SYSTEM */	    /* don't use system(), use fork()/exec() */
 
 # define EXEC_FAILED 122    /* Exit code when shell didn't execute.  Don't use
                                127, some shells use that already */
@@ -2813,8 +2634,6 @@ error:
   vim_free(newcmd);
 
   return retval;
-
-#endif /* USE_SYSTEM */
 }
 
 /*
@@ -3104,16 +2923,12 @@ int flags;                      /* EW_* flags */
   for (i = 0; i < num_pat; ++i) {
     /* Count the length of the patterns in the same way as they are put in
      * "command" below. */
-#ifdef USE_SYSTEM
-    len += STRLEN(pat[i]) + 3;          /* add space and two quotes */
-#else
     ++len;                              /* add space */
     for (j = 0; pat[i][j] != NUL; ++j) {
       if (vim_strchr(SHELL_SPECIAL, pat[i][j]) != NULL)
         ++len;                  /* may add a backslash */
       ++len;
     }
-#endif
   }
   command = alloc(len);
   if (command == NULL) {
@@ -3162,14 +2977,8 @@ int flags;                      /* EW_* flags */
 
   if (shell_style != STYLE_BT)
     for (i = 0; i < num_pat; ++i) {
-      /* When using system() always add extra quotes, because the shell
-       * is started twice.  Otherwise put a backslash before special
+      /* Put a backslash before special
        * characters, except inside ``. */
-#ifdef USE_SYSTEM
-      STRCAT(command, " \"");
-      STRCAT(command, pat[i]);
-      STRCAT(command, "\"");
-#else
       int intick = FALSE;
 
       p = command + STRLEN(command);
@@ -3196,7 +3005,6 @@ int flags;                      /* EW_* flags */
         *p++ = pat[i][j];
       }
       *p = NUL;
-#endif
     }
   if (flags & EW_SILENT)
     show_shell_mess = FALSE;
@@ -3238,24 +3046,16 @@ int flags;                      /* EW_* flags */
     vim_free(tempname);
     /*
      * With interactive completion, the error message is not printed.
-     * However with USE_SYSTEM, I don't know how to turn off error messages
-     * from the shell, so screen may still get messed up -- webb.
      */
-#ifndef USE_SYSTEM
     if (!(flags & EW_SILENT))
-#endif
     {
       redraw_later_clear();             /* probably messed up screen */
       msg_putchar('\n');                /* clear bottom line quickly */
       cmdline_row = Rows - 1;           /* continue on last line */
-#ifdef USE_SYSTEM
-      if (!(flags & EW_SILENT))
-#endif
-      {
-        MSG(_(e_wildexpand));
-        msg_start();                    /* don't overwrite this message */
-      }
+      MSG(_(e_wildexpand));
+      msg_start();                    /* don't overwrite this message */
     }
+
     /* If a `cmd` expansion failed, don't list `cmd` as a match, even when
      * EW_NOTFOUND is given */
     if (shell_style == STYLE_BT)
@@ -3555,10 +3355,10 @@ const char *src, *dest;
 
 
 #if defined(FEAT_LIBCALL) || defined(PROTO)
-typedef char_u * (*STRPROCSTR) __ARGS ((char_u *));
-typedef char_u * (*INTPROCSTR) __ARGS ((int));
-typedef int (*STRPROCINT) __ARGS ((char_u *));
-typedef int (*INTPROCINT) __ARGS ((int));
+typedef char_u * (*STRPROCSTR)(char_u *);
+typedef char_u * (*INTPROCSTR)(int);
+typedef int (*STRPROCINT)(char_u *);
+typedef int (*INTPROCINT)(int);
 
 /*
  * Call a DLL routine which takes either a string or int param

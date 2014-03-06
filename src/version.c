@@ -38,8 +38,8 @@ char    *longVersion = VIM_VERSION_LONG_DATE __DATE__ " " __TIME__ ")";
 char    *longVersion = VIM_VERSION_LONG;
 #endif
 
-static void list_features __ARGS((void));
-static void version_msg __ARGS((char *s));
+static void list_features(void);
+static void version_msg(char *s);
 
 static char *(features[]) =
 {
@@ -94,7 +94,7 @@ static char *(features[]) =
   "+folding",
   "-footer",
   /* only interesting on Unix systems */
-#if !defined(USE_SYSTEM) && defined(UNIX)
+#if defined(UNIX)
   "+fork()",
 #endif
   "+gettext",
@@ -175,10 +175,6 @@ static char *(features[]) =
   "+statusline",
   "-sun_workshop",
   "+syntax",
-  /* only interesting on Unix systems */
-#if defined(USE_SYSTEM) && (defined(UNIX) || defined(__EMX__))
-  "+system()",
-#endif
   "+tag_binary",
   "+tag_old_static",
 #ifdef FEAT_TAG_ANYWHITE
@@ -806,8 +802,8 @@ static void version_msg(char *s)
     MSG_PUTS(s);
 }
 
-static void do_intro_line __ARGS((int row, char_u *mesg, int add_version,
-                                  int attr));
+static void do_intro_line(int row, char_u *mesg, int add_version,
+                          int attr);
 
 /*
  * Show the intro message when not editing a file.
